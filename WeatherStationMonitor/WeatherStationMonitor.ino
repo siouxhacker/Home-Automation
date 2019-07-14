@@ -26,7 +26,7 @@
 #define PIGATEWAYID   10
 #define NETWORKID     100
 #define FREQUENCY     RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY    "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY    "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 
 #define SERIAL_BAUD 115200
 
