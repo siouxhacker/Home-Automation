@@ -1,5 +1,6 @@
 #include <RFM69.h>         //get it here: https://github.com/lowpowerlab/rfm69
 #include <RFM69_ATC.h>     //get it here: https://github.com/lowpowerlab/rfm69
+#include <RFM69_OTA.h>
 #include <SPIFlash.h>      //get it here: https://github.com/lowpowerlab/spiflash
 #include <SPI.h>           //included in Arduino IDE (www.arduino.cc)
 #include <LowPower.h>      //get it here: https://github.com/lowpowerlab/lowpower
@@ -16,7 +17,7 @@
 //#define FREQUENCY     RF69_433MHZ
 //#define FREQUENCY     RF69_868MHZ
 #define FREQUENCY       RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY      "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY      "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //*********************************************************************************************
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
@@ -76,6 +77,7 @@ volatile bool rainDetected = false;
 char Rstr[7];
 
 #define RESET_DELAY 600000
+#define PGM_TIMEOUT 150000
 #define RN_ARRAY_MAX 30
 #define DAILY_RAIN_START 36864
 #define RN_ARRAY_START DAILY_RAIN_START + (4 * 1024) + 1
@@ -212,12 +214,12 @@ void loop()
 
     if (batteryVolts != prevBatteryVolts)
     {
-      sprintf(buffer, "BAT:%sv RN:%s", BATstr, Rstr);
+      sprintf(buffer, "BAT:%sv RN:%s X:%d", BATstr, Rstr, radio._transmitLevel);
       prevBatteryVolts = batteryVolts;
     }
     else
     {
-      sprintf(buffer, "RN:%s", Rstr);
+      sprintf(buffer, "RN:%s X:%d", Rstr, radio._transmitLevel);
     }
     
     DEBUGln(buffer);
@@ -235,11 +237,17 @@ void loop()
                             sizeof(rainData), 3, 50))
     {     
       // Did a command to reset the rain amount arrive
-      if (radio.DATALEN == 3 &&
-          radio.DATA[0]=='R' && radio.DATA[1]=='S' && radio.DATA[2]=='T')
+      if (radio.DATALEN == 3)
       {
-        // Reset the rain amount to zero
-        ResetRain();
+        if (radio.DATA[0]=='R' && radio.DATA[1]=='S' && radio.DATA[2]=='T')
+        {
+          // Reset the rain amount to zero
+          ResetRain();
+        }
+        else if (radio.DATA[0]=='P' && radio.DATA[1]=='G' && radio.DATA[2]=='M')
+        {
+          HandleWirelessUpdate();
+        }
       }
     }
   }
@@ -252,6 +260,39 @@ void loop()
   radio.sleep();
   LowPower.powerDown(sleepTime, ADC_OFF, BOD_OFF);
   DEBUGln("WAKEUP8s");
+}
+
+// Perform wireless update
+void HandleWirelessUpdate()
+{
+  unsigned long updateTime = millis();
+  
+  do
+  {
+    //When this sketch is on a node where you can afford the power to keep the radio awake all the time
+    //   you can make it receive messages and also make it wirelessly programmable
+    //   otherwise this section can be removed
+    if (radio.receiveDone())
+    {
+      DEBUG('[');DEBUG(radio.SENDERID);DEBUG("] ");
+      for (byte i = 0; i < radio.DATALEN; i++)
+        DEBUG((char)radio.DATA[i]);
+  
+      flash.wakeup();
+      // wireless programming token check - this only works when radio is kept awake to listen for WP tokens
+      CheckForWirelessHEX(radio, flash, true);
+  
+      //first send any ACK to request
+      DEBUG("   [RX_RSSI:");DEBUG(radio.RSSI);DEBUG("]");
+      if (radio.ACKRequested())
+      {
+        radio.sendACK();
+        DEBUG(" - ACK sent.");
+      }
+      
+      DEBUGln();
+    }
+  } while(TimeSince(updateTime) > PGM_TIMEOUT);
 }
 
 // Keep one month of rain data
