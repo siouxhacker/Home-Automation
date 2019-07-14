@@ -14,7 +14,7 @@
 //#define FREQUENCY     RF69_433MHZ
 //#define FREQUENCY     RF69_868MHZ
 #define FREQUENCY       RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY      "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY      "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //*********************************************************************************************
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
@@ -177,12 +177,12 @@ void loop()
 
     if (batteryVolts != prevBatteryVolts)
     {
-      sprintf(buffer, "BAT:%s F:%s", BATstr, Fstr);
+      sprintf(buffer, "BAT:%s F:%s X:%d", BATstr, Fstr, radio._transmitLevel);
       prevBatteryVolts = batteryVolts;
     }
     else
     {
-      sprintf(buffer, "F:%s", Fstr);
+      sprintf(buffer, "F:%s X:%d", Fstr, radio._transmitLevel);
     }
     DEBUGln(buffer);
     

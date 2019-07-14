@@ -52,7 +52,7 @@
 //#define FREQUENCY     RF69_433MHZ
 //#define FREQUENCY     RF69_868MHZ
 #define FREQUENCY       RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY      "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY      "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //*********************************************************************************************
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
@@ -165,7 +165,6 @@ void setup(void)
 
   DEBUGln("Initialized BME280");
 
-
   if (flash.initialize())
   {
     flashExists = true;
@@ -233,12 +232,12 @@ void loop()
 
     if (batteryVolts != prevBatteryVolts)
     {
-      sprintf(buffer, "BAT:%sv F:%s H:%s P:%s", BATstr, Fstr, Hstr, Pstr);
+      sprintf(buffer, "BAT:%sv F:%s H:%s P:%s X:%d", BATstr, Fstr, Hstr, Pstr, radio._transmitLevel);
       prevBatteryVolts = batteryVolts;
     }
     else
     {
-      sprintf(buffer, "F:%s H:%s P:%s", Fstr, Hstr, Pstr);
+      sprintf(buffer, "F:%s H:%s P:%s X:%d", Fstr, Hstr, Pstr, radio._transmitLevel);
     }
 
     sendLen = strlen(buffer);

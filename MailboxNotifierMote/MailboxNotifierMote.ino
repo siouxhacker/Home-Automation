@@ -53,7 +53,7 @@
 //#define FREQUENCY     RF69_868MHZ
 #define FREQUENCY     RF69_915MHZ
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Remove/comment if you have RFM69W!
-#define ENCRYPTKEY    "" //exactly the same 16 characters/bytes on all nodes!
+#define ENCRYPTKEY    "****************" //exactly the same 16 characters/bytes on all nodes!
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 #define ATC_RSSI      -65
 //#define ENABLE_BME280 //uncomment to allow reading the BME280 (if present)
@@ -179,7 +179,7 @@ void loop() {
     bme280.writeRegister(BME280_CTRL_MEAS_REG, 0x00); //sleep the BME280
     sprintf(sendBuf, "MOTION BAT:%sv F:%s", BATstr, Fstr);
 #else
-    sprintf(sendBuf, "MOTION BAT:%sv", BATstr);
+    sprintf(sendBuf, "MOTION BAT:%sv X:%d", BATstr, radio._transmitLevel);
 #endif
 
     sendLen = strlen(sendBuf);
@@ -222,7 +222,7 @@ void loop() {
       sprintf(MLOstr, "LO:%ldh%ldm", lastOpened, (LO%3600)/60);
     else sprintf(MLOstr, "LO:%ld%c", lastOpened, periodO);
 
-    sprintf(sendBuf, "%s BAT:%sv", MLOstr, BATstr);
+    sprintf(sendBuf, "%s BAT:%sv, X:%d", MLOstr, BATstr, radio._transmitLevel);
 #endif
     
     sendLen = strlen(sendBuf);

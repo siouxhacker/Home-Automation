@@ -16,13 +16,14 @@
 #define NETWORKID   100
 #define PIGATEWAYID 10
 #define FREQUENCY   RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY  "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY  "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //*********************************************************************************************
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 #define ATC_RSSI      -80
 //*********************************************************************************************
 #define SEND_LOOPS    450 //send data this many sleep loops (15 loops of 8sec cycles = 120sec ~ 2 minutes)
+#define BATT_READ_LOOPS  SEND_LOOPS * 2  // read and report battery voltage every this many sleep cycles (ex 30cycles * 8sec sleep = 240sec/4min). For 450 cycles you would get ~1 hour intervals between readings
 
 #define BATT_FORMULA(reading) reading * 0.00322 * 2.95  // >>> fine tune this parameter to match your voltage when fully charged
 #define BATT_MONITOR  A7   // through 2Meg+1Meg and 0.1uF cap from battery VCC - this ratio divides the voltage to bring it below 3.3V where it is scaled to a readable range
@@ -63,6 +64,7 @@ struct VH400
 };
 
 SPIFlash flash(FLASH_SS, 0xEF30); //WINDBOND 4MBIT flash chip on CS pin D8 (default for Moteino)
+bool flashExists = false;
 
 struct VH400 result;
 
@@ -107,6 +109,7 @@ void setup()
 
   if (flash.initialize())
   {
+    flashExists = true;
     flash.sleep();
     DEBUGln(F("SPI Flash Init OK!"));
   }
@@ -118,30 +121,38 @@ void setup()
   radio.sendWithRetry(PIGATEWAYID, "START", 6);
 
   // Allow cap to charge
-  delay(3000);
+  delay(2000);
 }
 
 short sendLoops = 0;
+short battReadLoops = 0;
 float batteryVolts = 5;
 char* BATstr="BAT:5.00v"; //longest battery voltage reading message = 9chars
 char VWCstr[10];
 
 void loop()
 {
+  if (battReadLoops-- <= 0) //only read battery every BATT_READ_LOOPS cycles
+  {
+    readBattery();
+    battReadLoops = BATT_READ_LOOPS - 1;
+  }
+
   if (sendLoops-- <= 0)   //send readings every SEND_LOOPS
   {
     sendLoops = SEND_LOOPS - 1;
 
     // Power up the moisture sensor
     digitalWrite(PWR_PIN, HIGH);
-    delay(5000);
+    delay(400);
     float vwc = ReadVH400(MOISTURE_PIN);
     digitalWrite(PWR_PIN, LOW);
+
+    if (vwc < 0) vwc = 0;
     
     dtostrf(vwc, 3, 1, VWCstr);
-    readBattery();
     
-    sprintf(buffer, "BAT:%sv VWC:%s", BATstr, VWCstr);
+    sprintf(buffer, "BAT:%sv VWC:%s X:%d", BATstr, VWCstr, radio._transmitLevel);
     DEBUGln(buffer);
   
     // Send the data
@@ -155,6 +166,7 @@ void loop()
 
   SERIALFLUSH();
 
+  if (flashExists) flash.sleep();
   radio.sleep();
   LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
   DEBUGln("WAKEUP8s");

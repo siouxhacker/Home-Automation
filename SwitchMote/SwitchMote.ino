@@ -407,7 +407,7 @@ void action(byte whichButtonIndex, byte whatMode, boolean notifyGateway)
   //notify gateway
   if (notifyGateway)
   {
-    sprintf(buff, "BTN%d:%d", whichButtonIndex,whatMode);
+    sprintf(buff, "BTN%d:%d X:%d", whichButtonIndex, whatMode, radio._transmitLevel);
     if (radio.sendWithRetry(GATEWAYID, buff, strlen(buff), 5)) //up to 5 attempts
       {DEBUGln(F("..OK"));}
     else {DEBUGln(F("..NOK"));}

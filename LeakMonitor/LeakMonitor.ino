@@ -1,5 +1,4 @@
 #define TEMPHUMIDITY            //uncomment if DHT sensor is present to report temp/humidity/
-#define TEMPHUMIDITYSENDDELAY  600000 // send Temperature and Humidity data every 10 min
 #include <RFM69.h>         //get it here: http://github.com/lowpowerlab/rfm69
 #include <RFM69_ATC.h>
 #include <RFM69_OTA.h>
@@ -13,13 +12,13 @@
 //*****************************************************************************************************************************
 // ADJUST THE SETTINGS BELOW DEPENDING ON YOUR HARDWARE/SITUATION!
 //*****************************************************************************************************************************
-#define GATEWAYID   10
-#define NODEID      13
-#define NETWORKID   100
+#define GATEWAYID       10
+#define NODEID          13
+#define NETWORKID       100
 //#define FREQUENCY     RF69_433MHZ
 //#define FREQUENCY     RF69_868MHZ
 #define FREQUENCY       RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY      "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY      "***************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 #define LED_PIN         9   //pin connected to onboard LED
 #define SUMP_PIN        A0
@@ -29,10 +28,11 @@
 #define SERIAL_BAUD        115200
 #define SERIAL_EN                //comment out if you don't want any serial output
 
-#define SENSOR_READ_DELAY   5000    // 5 seconds
-#define BLINK_DELAY         20000   // 20 seconds
-#define NOTIFICATION_DELAY  600000  // 10 minutes
-#define ATC_RSSI            -85     //target RSSI for RFM69_ATC (recommended > -80)
+#define TEMPHUMIDITYSENDDELAY   600000 // send Temperature and Humidity data every 10 min
+#define SENSOR_READ_DELAY       5000    // 5 seconds
+#define BLINK_DELAY             20000   // 20 seconds
+#define NOTIFICATION_DELAY      600000  // 10 minutes
+#define ATC_RSSI                -85     //target RSSI for RFM69_ATC (recommended > -80)
 
 
 #ifdef SERIAL_EN
@@ -199,12 +199,12 @@ void loop()
   digitalWrite(BUZZER_PIN, waterDetected); 
   
 #ifdef TEMPHUMIDITY
-  if ((millis() - lastTempHumSent > TEMPHUMIDITYSENDDELAY) ||
+  if ((TimeSince(lastTempHumSent) > TEMPHUMIDITYSENDDELAY) ||
       reportStatusRequest)
   {
     lastTempHumSent = millis();
     float temp = ((dht.readTemperature() * 1.8) + 32) * 100.0;
-    sprintf(sendBuf, "F:%d H:%d", (int)temp, (int)dht.readHumidity());
+    sprintf(sendBuf, "F:%d H:%d X:%d", (int)temp, (int)dht.readHumidity(), radio._transmitLevel);
     DEBUGln(sendBuf);
     byte sendLen = strlen(sendBuf);
     radio.send(GATEWAYID, sendBuf, sendLen);

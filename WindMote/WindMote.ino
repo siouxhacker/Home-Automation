@@ -1,6 +1,6 @@
 #include <RFM69.h>
 #include <RFM69_ATC.h>
-//#include <RFM69_OTA.h>
+#include <RFM69_OTA.h>
 #include <SPIFlash.h>
 #include <SPI.h>
 #include <LowPower.h>
@@ -16,7 +16,7 @@
 #define GATEWAYID   1
 #define PIGATEWAYID 10
 #define FREQUENCY   RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY  "G0dBl3s5@mer1ca7" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY  "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW    //uncomment only for RFM69HW! Leave out if you have RFM69W!
 //*********************************************************************************************
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
@@ -67,16 +67,18 @@ period_t sleepTime = SLEEP_LONGEST; //period_t is an enum type defined in the Lo
 SPIFlash flash(FLASH_SS, 0xEF30); //WINDBOND 4MBIT flash chip on CS pin D8 (default for Moteino)
 WindData windData;
 char Wstr[6];
+char WTOPstr[6];
 
 char* BATstr="BAT:5.00v"; //longest battery voltage reading message = 9chars
 float batteryVolts = 5;
 char buffer[50];
-float topWS = 0.0;
+float todayTopWS = 0.0;
 unsigned long lastResetTime = 0, time = 0, now = 0;
 
 #define RESET_DELAY 600000
-#define DAILY_WIND_MAX_START 36864
-#define YESTERDAY_WIND_MAX_START DAILY_WIND_MAX_START + sizeof(float) + 1
+#define PGM_TIMEOUT 150000
+#define TODAY_WIND_MAX_START 36864
+#define YESTERDAY_WIND_MAX_START TODAY_WIND_MAX_START + sizeof(float) + 1
 
 volatile unsigned long Rotations;  // cup rotation counter used in interrupt routine
 volatile unsigned long ContactBounceTime;  // Timer to avoid contact bounce in interrupt routine
@@ -142,12 +144,12 @@ void setup()
   }
 
   // Read the daily rain amount on start
-  ReadBytes(DAILY_WIND_MAX_START, (void*) &topWS, sizeof(topWS));
+  ReadBytes(TODAY_WIND_MAX_START, (void*) &todayTopWS, sizeof(todayTopWS));
 
   // Make sure flash is OK and a valid value is stored.
   // If not, set to zero
-  if (isnan(topWS))
-    topWS = 0.0;
+  if (isnan(todayTopWS))
+    todayTopWS = 0.0;
 
   flash.sleep();
 
@@ -159,8 +161,9 @@ void setup()
   radio.sendWithRetry(PIGATEWAYID, "START", 6);
 }
 
-byte sendLoops = 0;
-byte battReadLoops = 0;
+short sendLoops = 0;
+short battReadLoops = 0;
+float prevTopWS = 0;
 
 void loop()
 {
@@ -179,14 +182,14 @@ void loop()
     windData.windSpeed = CalcWindSpeed();
     sprintf(windData.windDir, "%s", CalcWindDir(DIR_OFFSET));
 
-    if (windData.windSpeed > topWS)
+    if (windData.windSpeed > todayTopWS)
     {
       // Don't want these steps to be interrupted.
       noInterrupts();
 
       // Keep track of top wind speed for the day
-      topWS = windData.windSpeed;
-      WriteBytes(DAILY_WIND_MAX_START, (const void*) &topWS, sizeof(topWS));
+      todayTopWS = windData.windSpeed;
+      WriteBytes(TODAY_WIND_MAX_START, (const void*) &todayTopWS, sizeof(todayTopWS));
       
       interrupts();
    }
@@ -197,11 +200,28 @@ void loop()
     DEBUGln(windData.windDir);
 
     dtostrf(windData.windSpeed, 3, 1, Wstr);
-    sprintf(buffer, "BAT:%sv WS:%s WDIR:%s", BATstr, Wstr, windData.windDir);
+
+    if (prevTopWS != todayTopWS)
+    {
+      dtostrf(todayTopWS, 3, 1, WTOPstr);
+      sprintf(buffer, "BAT:%sv WS:%s WDIR:%s WST:%s", BATstr, Wstr, windData.windDir, WTOPstr);
+      prevTopWS = todayTopWS;
+    }
+    else
+    {
+      sprintf(buffer, "BAT:%sv WS:%s WDIR:%s", BATstr, Wstr, windData.windDir);
+    }
+
+    char xmitLvl[6];
+
+    sprintf(xmitLvl, " X:%d", radio._transmitLevel);
+    strcat(buffer, xmitLvl);
+    
     DEBUGln(buffer);
   
     // Send data to pi gateway
-    if (radio.sendWithRetry(PIGATEWAYID, buffer, strlen(buffer), 3, 50))
+    if (radio.sendWithRetry(PIGATEWAYID, buffer, strlen(buffer), 3, 100))
+    
     {
       #ifdef BLINK_EN
         Blink(LED, 5);
@@ -210,42 +230,24 @@ void loop()
 
     // Send data to LCD weather monitor
     if (radio.sendWithRetry(GATEWAYID, (const void*)(&windData),
-                        sizeof(windData), 3, 50))
+                        sizeof(windData), 3, 100))
     {
       // Did a command to reset the rain amount arrive
-      if (radio.DATALEN == 3 &&
-          radio.DATA[0]=='R' && radio.DATA[1]=='S' && radio.DATA[2]=='T')
+      if (radio.DATALEN == 3)   
       {
-        // Reset the daily top wind speed to zero
-        ResetWind();
+        if (radio.DATA[0]=='R' && radio.DATA[1]=='S' && radio.DATA[2]=='T')
+        {
+          // Reset the daily top wind speed to zero
+          ResetWind();
+        }
+        else if (radio.DATA[0]=='P' && radio.DATA[1]=='G' && radio.DATA[2]=='M')
+        {
+          HandleWirelessUpdate();
+        }
       }
     }
   }
   
-  //When this sketch is on a node where you can afford the power to keep the radio awake all the time
-  //   you can make it receive messages and also make it wirelessly programmable
-  //   otherwise this section can be removed
-  if (radio.receiveDone())
-  {
-    DEBUG('[');DEBUG(radio.SENDERID);DEBUG("] ");
-    for (byte i = 0; i < radio.DATALEN; i++)
-      DEBUG((char)radio.DATA[i]);
-
-    //flash.wakeup();
-    // wireless programming token check - this only works when radio is kept awake to listen for WP tokens
-    //CheckForWirelessHEX(radio, flash, true);
-
-    //first send any ACK to request
-    DEBUG("   [RX_RSSI:");DEBUG(radio.RSSI);DEBUG("]");
-    if (radio.ACKRequested())
-    {
-      radio.sendACK();
-      DEBUG(" - ACK sent.");
-    }
-    
-    DEBUGln();
-  }
-
   SERIALFLUSH();
 
   time = time + 8000 + millis() - now;
@@ -253,6 +255,39 @@ void loop()
   radio.sleep();
   LowPower.powerDown(sleepTime, ADC_OFF, BOD_OFF);
   DEBUGln("WAKEUP8s");
+}
+
+// Perform wireless update
+void HandleWirelessUpdate()
+{
+  unsigned long updateTime = millis();
+  
+  do
+  {
+    //When this sketch is on a node where you can afford the power to keep the radio awake all the time
+    //   you can make it receive messages and also make it wirelessly programmable
+    //   otherwise this section can be removed
+    if (radio.receiveDone())
+    {
+      DEBUG('[');DEBUG(radio.SENDERID);DEBUG("] ");
+      for (byte i = 0; i < radio.DATALEN; i++)
+        DEBUG((char)radio.DATA[i]);
+  
+      flash.wakeup();
+      // wireless programming token check - this only works when radio is kept awake to listen for WP tokens
+      CheckForWirelessHEX(radio, flash, true);
+  
+      //first send any ACK to request
+      DEBUG("   [RX_RSSI:");DEBUG(radio.RSSI);DEBUG("]");
+      if (radio.ACKRequested())
+      {
+        radio.sendACK();
+        DEBUG(" - ACK sent.");
+      }
+      
+      DEBUGln();
+    }
+  } while(TimeSince(updateTime) > PGM_TIMEOUT);
 }
 
 void ResetWind()
@@ -265,12 +300,12 @@ void ResetWind()
   
   lastResetTime = time;
   
-  SendTopWind(topWS);
+  SendTopWind(todayTopWS);
  
-  topWS = 0.0;
+  todayTopWS = 0.0;
 
   // Reset the daily top wind speed in flash
-  WriteBytes(DAILY_WIND_MAX_START, (const void*) &topWS, sizeof(topWS));
+  WriteBytes(TODAY_WIND_MAX_START, (const void*) &todayTopWS, sizeof(todayTopWS));
 }
 
 void SendTopWind(float dailyTopWS)
@@ -284,7 +319,7 @@ void SendTopWind(float dailyTopWS)
   DEBUGln(buffer);
   
   // Send the data
-  if (radio.sendWithRetry(PIGATEWAYID, buffer, sizeof(buffer), 3, 50))
+  if (radio.sendWithRetry(PIGATEWAYID, buffer, sizeof(buffer), 3, 100))
   {
     #ifdef BLINK_EN
       Blink(LED, 5);

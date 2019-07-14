@@ -37,8 +37,8 @@
 // Please maintain this license information along with authorship
 // and copyright notices in any redistribution of this code
 // ***************************************************************************************************************************
-//#define LIGHTSENSOR            // uncomment if LDR is attached
-#define WEATHERSHIELD            // uncomment if WeatherShield is present to report temp/humidity/pressure periodically
+#define LIGHTSENSOR            // uncomment if LDR is attached
+//#define WEATHERSHIELD            // uncomment if WeatherShield is present to report temp/humidity/pressure periodically
 #define WEATHERSENDDELAY  600000 // send WeatherShield data every so often (ms)
 #define LIGHTSENSORDELAY  300000 // send light level every so often
 // ***************************************************************************************************************************
@@ -55,12 +55,12 @@
 // ADJUST THE SETTINGS BELOW DEPENDING ON YOUR HARDWARE/TRANSCEIVER SETTINGS/REQUIREMENTS
 //*****************************************************************************************************************************
 #define GATEWAYID   10
-#define NODEID      2
-#define NETWORKID   200
+#define NODEID      11
+#define NETWORKID   100
 //#define FREQUENCY     RF69_433MHZ
 //#define FREQUENCY     RF69_868MHZ
 #define FREQUENCY       RF69_915MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
-#define ENCRYPTKEY      "" //has to be same 16 characters/bytes on all nodes, not more not less!
+#define ENCRYPTKEY      "****************" //has to be same 16 characters/bytes on all nodes, not more not less!
 //#define IS_RFM69HW      //uncomment only for RFM69HW! Leave out if you have RFM69W!
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 #define ATC_RSSI            -85  //target RSSI for RFM69_ATC (recommended > -80)
@@ -360,7 +360,7 @@ void loop()
   {
     lastWeatherSent = millis();
     float temp = ((dht.readTemperature() * 1.8) + 32) * 100.0;
-    sprintf(sendBuf, "F:%d H:%d", (int)temp, (int)dht.readHumidity());
+    sprintf(sendBuf, "F:%d H:%d X:%d", (int)temp, (int)dht.readHumidity(), radio._transmitLevel);
     DEBUGln(sendBuf);
     radio.sendWithRetry(GATEWAYID, sendBuf, strlen(sendBuf), 3);
   }
@@ -371,7 +371,7 @@ void loop()
   {
     lastLightSent = millis();
 
-    sprintf(sendBuf, "LL:%d", GetLightLevel());
+    sprintf(sendBuf, "LL:%d X:%d", GetLightLevel(), radio._transmitLevel);
     DEBUGln(sendBuf);
     radio.sendWithRetry(GATEWAYID, sendBuf, strlen(sendBuf), 3);
   }
